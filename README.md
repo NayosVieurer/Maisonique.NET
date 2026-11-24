@@ -8,7 +8,13 @@ To follow a recipe save, open `client/src/forms/RecipeForm.tsx`, then `server/Co
 
 ## Run it on a development computer
 
-Install the .NET 10 SDK and unzip the source. From the directory containing this README, run the following command. The ZIP includes the compiled web client in `server/wwwroot`, so this first run only needs the SDK and a connection for the initial package restore.
+Install the .NET 10 SDK. From a fresh Git clone, also install Node 22.13 or newer and build the web client once from the repository root using Bash.
+
+```sh
+bash deploy/build-web.sh
+```
+
+The downloadable source ZIP already includes the compiled web client. Start the app from the directory containing this README. The first run restores the .NET dependencies.
 
 ```sh
 dotnet run --project server -- --urls http://127.0.0.1:5080

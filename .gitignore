@@ -10,3 +10,11 @@ artifacts/
 __pycache__/
 *.db-wal
 *.db-shm
+
+# Local configuration and household data
+.env
+.env.*
+!.env.example
+*.db
+*.sqlite
+*.sqlite3
