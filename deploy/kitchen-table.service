@@ -1,0 +1,23 @@
+[Unit]
+Description=Kitchen Table household planner
+After=network.target
+
+[Service]
+Type=simple
+DynamicUser=yes
+StateDirectory=kitchen-table
+WorkingDirectory=/opt/kitchen-table/current
+ExecStart=/opt/kitchen-table/current/KitchenTable
+Environment=ASPNETCORE_URLS=http://0.0.0.0:5080
+Environment=KitchenTable__DatabasePath=/var/lib/kitchen-table/kitchen-table.db
+Environment=KitchenTable__TimeZone=Europe/London
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

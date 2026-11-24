@@ -1,0 +1,20 @@
+{
+  "expo": {
+    "name": "Kitchen Table",
+    "slug": "kitchen-table",
+    "version": "0.1.0",
+    "orientation": "default",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "local.kitchentable.app",
+      "infoPlist": {
+        "NSLocalNetworkUsageDescription": "Kitchen Table connects to your household Raspberry Pi over Wi-Fi.",
+        "NSAppTransportSecurity": { "NSAllowsLocalNetworking": true }
+      }
+    },
+    "android": { "package": "local.kitchentable.app" },
+    "plugins": [["expo-build-properties", { "android": { "usesCleartextTraffic": true } }]],
+    "web": { "bundler": "metro", "output": "single" }
+  }
+}
