@@ -1,6 +1,6 @@
 # Kitchen Table project workflow
 
-For each requested Kitchen Table code revision, start from the latest agreed branch on the project's GitHub remote. Work in this repository and preserve changes already made by other contributors.
+For each requested Kitchen Table code revision, start from the latest `main` on `origin` at https://github.com/NayosVieurer/Maisonique.NET.git. Use a different branch if the user names one. Preserve changes already made by other contributors.
 
 - Follow the project layout in `ARCHITECTURE.md` and the checked-in EditorConfig and Prettier settings.
 - Run the checks relevant to the change. The commands are in `README.md`.
