@@ -1,6 +1,6 @@
 import { deepStrictEqual, equal, throws } from 'node:assert/strict';
 import test from 'node:test';
-import { readIngredient, readRecipe } from '../client/src/importRecipe.ts';
+import { readIngredient, readRecipe } from '../client/src/services/parseRecipe.ts';
 
 test('measured ingredients, countables and uncertain quantities', () => {
   deepStrictEqual(readIngredient('200g pasta'), { name: 'pasta', amount: 200, unit: 'g' });

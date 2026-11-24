@@ -16,16 +16,36 @@ flowchart TB
     S --> D
 ```
 
-## Feature boundaries
+## Controllers, models and services
 
-| Feature and source | Owns | Connects to |
-| --- | --- | --- |
-| Calendar, `Calendar.cs` | Household profiles, colours, appointments, chores, start and end times | Optional person on an entry. Chore completion is an explicit state change. |
-| Cookbook, `Recipes.cs` | Titles, base servings, ordered ingredients and cooking steps | The universal client can turn pasted text into an editable recipe. The API validates every saved recipe. |
-| Meal planning, `Planning.cs` | Recipe, planned servings, day and slot | Each plan references a persisted recipe. The week planner shows meals alongside the day's events. |
-| Shopping, `Shopping.cs` | Grouped ingredient totals, checked quantities and manual extras | A read projection combines the current recipes and planned meals for one week. |
+Start in `server/Controllers/` to find a route. Every resource has one MVC controller file. Each action delegates to an injected service or returns a readiness response. Request and response models each have their own file in `server/Models/`.
 
-`Program.cs` maps requests to the features. A `Database` opens a connection and a transaction for each operation and passes a `Session` into the feature. SQL stays close to its use. There is one deployment unit. Feature code and validation can be tested through ordinary HTTP against the same SQLite provider used on the Pi.
+| Resource | Controller file | Service contract | Responsibility |
+| --- | --- | --- | --- |
+| Health | `HealthController.cs` | Direct response | Report that the service started and migrations completed. |
+| Week | `WeekController.cs` | `IWeekService` | Load a consistent household snapshot for the selected Monday. |
+| People | `PeopleController.cs` | `IPersonService` | Save or remove a household member. |
+| Recipes | `RecipesController.cs` | `IRecipeService` | Save or remove a recipe with its ordered ingredients and steps. |
+| Calendar entries | `EntriesController.cs` | `IEntryService` | Save or remove an appointment or chore, or change a chore's completion state. |
+| Planned meals | `MealsController.cs` | `IMealService` | Save or remove a recipe, serving count and meal slot for a day. |
+| Shopping | `ShoppingController.cs` | `IShoppingService` | Add or remove manual items and check off items on the weekly list. |
+
+Inside `server/Services/`, `Interfaces/` contains the contracts, `Abstract/` contains the shared base class, and `Concrete/` contains each implementation. `VersionedService<TInput>` opens the write transaction for saves and deletes. It checks edit versions for deletion and gives each subclass a version check for its own save. `WeekService` and `ShoppingService` use their own transaction rules.
+
+### Follow a recipe save
+
+1. `client/src/forms/RecipeForm.tsx` collects the title, base servings, ingredients and steps. Its shared `EditorForm.tsx` submits the values and edit version through `services/apiRequest.ts` under `client/src/`.
+2. `server/Controllers/RecipesController.cs` binds the URL ID and the JSON body, represented by `server/Models/RecipeInput.cs`. The action calls `IRecipeService.Save`.
+3. `server/Services/Abstract/VersionedService.cs` opens a SQLite write transaction. `server/Services/Concrete/RecipeService.cs` validates the input, checks the version, and saves the recipe in that transaction.
+4. The controller returns HTTP 204. The client reloads the week. `WeekService` uses `HouseholdQueries` and `ShoppingListQuery` in one read transaction so the meal plan and shopping quantities agree.
+
+`Program.cs` builds and starts the host, applies database migrations and connects the middleware and controllers. `Configuration/ServiceRegistration.cs` wires service interfaces to their implementations. `Middleware/ApiExceptionHandler.cs` translates application and SQLite errors into HTTP responses.
+
+### React Native source
+
+`client/src/App.tsx` loads fonts and the safe-area provider. `screens/HouseholdApp.tsx` owns the selected tab, week and active editor. The four screen files render the planner, cookbook, shopping list and household. Under `screens/planner/`, `DaySelector.tsx`, `DayAgenda.tsx` and `MealPlan.tsx` implement the three parts of the planner.
+
+`forms/` holds recipe, calendar entry, meal and person forms. `components/` holds shared controls and dialogs. `hooks/useBoard.ts` manages polling and cancellation, while `hooks/useHouseholdWrite.ts` handles the pending state for direct edits such as checking off an item. `services/parseRecipe.ts` converts pasted text into a draft the user can review.
 
 ## Storage and calendar semantics
 

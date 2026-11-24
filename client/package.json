@@ -7,9 +7,13 @@
     "start": "expo start",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
-    "export:web": "expo export --platform web"
+    "export:web": "expo export --platform web",
+    "format": "prettier --write index.ts src",
+    "format:check": "prettier --check index.ts src"
   },
-  "engines": { "node": ">=22.13.0" },
+  "engines": {
+    "node": ">=22.13.0"
+  },
   "dependencies": {
     "@expo-google-fonts/dm-sans": "0.4.2",
     "@expo-google-fonts/dm-serif-text": "0.4.1",
@@ -26,6 +30,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.3.0",
+    "prettier": "3.10.1",
     "typescript": "~6.0.3"
   }
 }

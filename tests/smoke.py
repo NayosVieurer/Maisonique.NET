@@ -93,10 +93,15 @@ def exercise(origin):
     assert api("GET", "/health", expected=200)["status"] == "ok"
     api("GET", "/week?start=2026-03-24", expected=400)
     api("GET", "/week?start=2026-02-31", expected=400)
+    api("GET", "/week?start=", expected=400)
+    api("GET", "/week?start=%20", expected=400)
+    api("GET", "/week?start=2026-03-23&start=2026-03-30", expected=400)
     person, recipe, chore, meeting, meal = [fresh() for _ in range(5)]
     profile = {"name": "Sam", "colour": "#32634B", "version": 0}
     call(origin, "PUT", "/people/" + person, profile, 400, header=False)
     api("PUT", "/people/" + person, profile)
+    api("DELETE", "/people/" + person, expected=400)
+    api("DELETE", "/people/" + person + "?version=1&version=2", expected=400)
     api("PUT", "/people/" + person, {**profile, "name": "Alex"}, 409)
     recipe_body = {"title": "Rice bowl", "servings": 4, "version": 0, "steps": ["Cook the rice."],
                    "ingredients": [{"name": "Rice", "amount": 200, "unit": "g"},

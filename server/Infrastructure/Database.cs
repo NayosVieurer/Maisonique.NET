@@ -1,19 +1,21 @@
 using System.Globalization;
+using KitchenTable.Infrastructure.Interfaces;
 using Microsoft.Data.Sqlite;
 
-namespace KitchenTable;
+namespace KitchenTable.Infrastructure;
 
-public sealed class Database
+public sealed class Database : IDatabase
 {
     private readonly string _connectionString;
 
     public Database(string path)
     {
-        path = Path.GetFullPath(path);
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        string fullPath = Path.GetFullPath(path);
+        Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+
         _connectionString = new SqliteConnectionStringBuilder
         {
-            DataSource = path,
+            DataSource = fullPath,
             ForeignKeys = true,
             DefaultTimeout = 5
         }.ToString();
@@ -21,96 +23,91 @@ public sealed class Database
 
     public void Migrate()
     {
-        using var connection = new SqliteConnection(_connectionString);
-        connection.Open();
-        using var enableWal = connection.CreateCommand();
-        enableWal.CommandText = "PRAGMA journal_mode=WAL";
-        enableWal.ExecuteScalar();
+        using var connection = OpenConnection();
 
-        using var tx = connection.BeginTransaction();
-        var db = new Session(connection, tx);
-        db.Exec("CREATE TABLE IF NOT EXISTS schema_versions(version INTEGER PRIMARY KEY)");
+        using (var enableWal = connection.CreateCommand())
+        {
+            enableWal.CommandText = "PRAGMA journal_mode=WAL";
+            enableWal.ExecuteScalar();
+        }
+
+        using var transaction = connection.BeginTransaction();
+        var session = new DatabaseSession(connection, transaction);
+        session.Execute("CREATE TABLE IF NOT EXISTS schema_versions(version INTEGER PRIMARY KEY)");
+
         var assembly = typeof(Database).Assembly;
         var scripts = assembly.GetManifestResourceNames()
             .Where(name => name.Contains(".Migrations.") && name.EndsWith(".sql", StringComparison.Ordinal))
-            .Order(StringComparer.Ordinal).ToArray();
-        if (scripts.Length == 0) throw new InvalidOperationException("The build contains no database migrations.");
-        var installed = db.Query("SELECT version FROM schema_versions ORDER BY version", r => r.GetInt32(0));
-        if (!installed.SequenceEqual(Enumerable.Range(1, installed.Count)) || installed.Count > scripts.Length)
-            throw new InvalidOperationException("This database requires a different application version.");
-        for (int i = 0; i < scripts.Length; i++)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        if (scripts.Length == 0)
         {
-            var filename = scripts[i].Split('.')[^2];
-            if (int.Parse(filename.Split('_')[0], CultureInfo.InvariantCulture) != i + 1)
-                throw new InvalidOperationException($"Migration sequence error at {filename}.");
-            if (i < installed.Count) continue;
-            using var reader = new StreamReader(assembly.GetManifestResourceStream(scripts[i])!);
-            db.Exec(reader.ReadToEnd());
-            db.Exec("INSERT INTO schema_versions VALUES ($v)", ("$v", i + 1));
+            throw new InvalidOperationException("The build contains no database migrations.");
         }
-        tx.Commit();
+
+        var installed = session.Query("SELECT version FROM schema_versions ORDER BY version", row => row.GetInt32(0));
+        if (installed.Count > scripts.Length || !installed.SequenceEqual(Enumerable.Range(1, installed.Count)))
+        {
+            throw new InvalidOperationException("This database requires a different application version.");
+        }
+
+        for (int index = 0; index < scripts.Length; index++)
+        {
+            string name = scripts[index];
+            string fileName = name.Split('.')[^2];
+            int version = int.Parse(fileName.Split('_')[0], CultureInfo.InvariantCulture);
+
+            if (version != index + 1)
+            {
+                throw new InvalidOperationException($"Migration sequence error at {fileName}.");
+            }
+
+            if (version <= installed.Count)
+            {
+                continue;
+            }
+
+            using var reader = new StreamReader(assembly.GetManifestResourceStream(name)!);
+            session.Execute(reader.ReadToEnd());
+            session.Execute("INSERT INTO schema_versions VALUES ($version)", ("$version", version));
+        }
+
+        transaction.Commit();
     }
 
-    // A deferred read transaction holds one snapshot; writes reserve the writer before validation.
-    public T Read<T>(Func<Session, T> action) => InTransaction(action, deferred: true);
-
-    public void Write(Action<Session> action) => InTransaction(db => { action(db); return true; }, deferred: false);
-
-    private T InTransaction<T>(Func<Session, T> action, bool deferred)
+    public T Read<T>(Func<DatabaseSession, T> read)
     {
-        using var connection = new SqliteConnection(_connectionString);
-        connection.Open();
-        using var tx = connection.BeginTransaction(deferred);
-        var result = action(new Session(connection, tx));
-        tx.Commit();
+        using var connection = OpenConnection();
+        using var transaction = connection.BeginTransaction(deferred: true);
+
+        var result = read(new DatabaseSession(connection, transaction));
+        transaction.Commit();
+
         return result;
     }
-}
 
-public sealed class Session(SqliteConnection connection, SqliteTransaction transaction)
-{
-    private SqliteCommand Command(string sql, (string, object?)[] parameters)
+    public void Write(Action<DatabaseSession> write)
     {
-        var command = connection.CreateCommand();
-        command.Transaction = transaction;
-        command.CommandText = sql;
-        foreach (var (name, value) in parameters)
-            command.Parameters.AddWithValue(name, value ?? DBNull.Value);
-        return command;
+        using var connection = OpenConnection();
+        using var transaction = connection.BeginTransaction(deferred: false);
+
+        write(new DatabaseSession(connection, transaction));
+        transaction.Commit();
     }
 
-    public List<T> Query<T>(string sql, Func<SqliteDataReader, T> map, params (string, object?)[] parameters)
+    private SqliteConnection OpenConnection()
     {
-        using var command = Command(sql, parameters);
-        using var reader = command.ExecuteReader();
-        var rows = new List<T>();
-        while (reader.Read()) rows.Add(map(reader));
-        return rows;
-    }
-
-    public int Exec(string sql, params (string, object?)[] parameters)
-    {
-        using var command = Command(sql, parameters);
-        return command.ExecuteNonQuery();
-    }
-
-    // The table is one of the compile-time feature constants, never a request parameter.
-    public int Version(string table, string id) =>
-        Query($"SELECT version FROM {table} WHERE id=$id", r => r.GetInt32(0), ("$id", id)).SingleOrDefault();
-
-    public int NextVersion(string table, string id, int expected)
-    {
-        if (Version(table, id) != expected || expected < 0)
-            throw Fault.Conflict("Someone changed this item. Reopen it to see the latest version.");
-        return checked(expected + 1);
-    }
-
-    public void Delete(string table, string id, int expected)
-    {
-        if (expected < 1) throw Fault.Bad("Supply the item's current version.");
-        int current = Version(table, id);
-        if (current == 0) return; // Handles a repeated successful delete.
-        NextVersion(table, id, expected);
-        Exec($"DELETE FROM {table} WHERE id=$id", ("$id", id));
+        var connection = new SqliteConnection(_connectionString);
+        try
+        {
+            connection.Open();
+            return connection;
+        }
+        catch
+        {
+            connection.Dispose();
+            throw;
+        }
     }
 }

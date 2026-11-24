@@ -2,6 +2,10 @@
 
 A local household planner for a Raspberry Pi. A recipe in the cookbook can become Tuesday's dinner, appear beside the family's appointments and supply the right quantities to the shared shopping list. The Pi holds the household's only database. The kitchen screen and phones use the same application.
 
+## Where to start reading the code
+
+To follow a recipe save, open `client/src/forms/RecipeForm.tsx`, then `server/Controllers/RecipesController.cs`. The controller accepts a `RecipeInput` and calls `IRecipeService.Save`. Its concrete implementation, `RecipeService`, validates the recipe and writes it to SQLite. The editable TypeScript and JSX live in `client/src/`. The compiled files served to browsers live in `server/wwwroot/`.
+
 ## Run it on a development computer
 
 Install the .NET 10 SDK and unzip the source. From the directory containing this README, run the following command. The ZIP includes the compiled web client in `server/wwwroot`, so this first run only needs the SDK and a connection for the initial package restore.
@@ -59,14 +63,22 @@ For a locally compiled standalone app, set the same API origin at build time and
 
 | Location | Contents |
 | --- | --- |
-| `server/Program.cs` | HTTP routes, configuration, errors and static hosting |
-| `server/Features/` | Calendar and people, cookbook, meal planning, shopping calculations |
-| `server/Infrastructure/` | SQLite transactions, input rules and ordered SQL migrations |
-| `client/src/` | Shared screens, recipe paste parser, week navigation, forms and HTTP client |
-| `tests/` | Isolated real-API tests and recipe-import regression tests |
-| `deploy/` | Web build, ARM64 publishing, system service and kiosk scripts |
+| `server/Controllers/` | One MVC controller per API resource. Save and delete actions for a recipe are together in `RecipesController.cs`. |
+| `server/Models/` | One named C# model per file, including the request models and the responses returned by the API. |
+| `server/Services/Interfaces/` | Contracts consumed by the controllers, such as `IRecipeService.cs`. |
+| `server/Services/Abstract/` | `VersionedService.cs` provides the transaction and edit-version behaviour shared by people, recipes, entries and meals. |
+| `server/Services/Concrete/` | The six service implementations, each in its own file. |
+| `server/Infrastructure/` | SQLite access, migrations, validation, week queries and the shopping list calculation. |
+| `server/Configuration/`, `server/Middleware/` | Dependency registration, API request headers and exception handling. `Program.cs` wires up the application. |
+| `client/src/screens/`, `forms/`, `components/` under `client/src/` | Screens assemble the UI, forms manage edits and reusable components render controls. The planner's day selector, agenda and meal plan each have a file. |
+| `client/src/hooks/`, `services/`, `models/` under `client/src/` | Week refresh and write state, API requests and recipe parsing, and shared data types. |
+| `tests/`, `deploy/` | HTTP and recipe parser tests, web and ARM64 builds, system service and kiosk scripts. |
 
 The architecture note includes the component diagram, data model, HTTP contract, consistency rules and suggested integration points. [Architecture and API](ARCHITECTURE.md)
+
+## Formatting
+
+C# uses four spaces, braces on separate lines and blank lines between logical blocks. The React project uses two spaces and the checked-in Prettier configuration. From `client/`, run `npm run format` to apply the style or `npm run format:check` to check it. An editor with EditorConfig support will also pick up the repository settings.
 
 ## Verify a change
 
@@ -77,6 +89,7 @@ python3 tests/smoke.py
 node --experimental-strip-types --test tests/recipe-import.mjs
 # From client/ after npm ci
 npm run typecheck
+npm run format:check
 npm run export:web
 ```
 
